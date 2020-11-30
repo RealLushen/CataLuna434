@@ -1,0 +1,52 @@
+dist: xenial
+
+language: cpp
+compiler:
+  - clang
+
+git:
+  depth: 1
+
+addons:
+  apt:
+    sources:
+      - sourceline: 'ppa:mhier/libboost-latest'
+    packages:
+      - boost1.67
+      - libssl-dev
+      - libmysqlclient-dev
+      - libreadline6-dev
+      - zlib1g-dev
+      - libbz2-dev
+      - libzmq3-dev
+
+services:
+  - mysql
+
+before_install:
+  - git config user.email "travis@build.bot" && git config user.name "Travis CI"
+  - git tag -a -m "Travis build" init
+
+install:
+  - mysql -uroot -e 'create database test_mysql;'
+  - mkdir bin
+  - cd bin
+  - cmake ../ -DWITH_WARNINGS=1 -DWITH_COREDEBUG=0 -DUSE_COREPCH=1 -DUSE_SCRIPTPCH=1 -DTOOLS=1 -DSCRIPTS=dynamic -DSERVERS=1 -DNOJEM=0 -DCMAKE_BUILD_TYPE=Debug -DCMAKE_C_FLAGS="-Werror" -DCMAKE_CXX_FLAGS="-Werror" -DCMAKE_C_FLAGS_DEBUG="-DNDEBUG" -DCMAKE_CXX_FLAGS_DEBUG="-DNDEBUG" -DCMAKE_INSTALL_PREFIX=check_install
+  - cd ..
+  - chmod +x contrib/check_updates.sh
+
+script:
+  - $CXX --version
+  - mysql -uroot < sql/create/create_mysql.sql
+  - mysql -utrinity -ptrinity auth_434 < sql/base/auth_database.sql
+  - ./contrib/check_updates.sh auth 4.3.4 auth_434 localhost
+  - mysql -utrinity -ptrinity characters_434 < sql/base/characters_database.sql
+  - ./contrib/check_updates.sh characters 4.3.4 characters_434 localhost
+  - mysql -utrinity -ptrinity world_434 < sql/base/dev/world_database.sql
+  - cat sql/updates/world/4.3.4/*.sql | mysql -utrinity -ptrinity world_434
+  - mysql -uroot < sql/create/drop_mysql.sql
+  - cd bin
+  - make -j 8 -k && make install
+  - cd check_install/bin
+  - ./authserver --version
+  - ./worldserver --version
